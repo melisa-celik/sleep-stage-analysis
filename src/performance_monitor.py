@@ -18,7 +18,7 @@ class PerformanceMonitor:
         self._records = []
         self.start_time = None
         self._gpu_monitoring_available = False
-        
+
         try:
             pynvml.nvmlInit()
             self.gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
@@ -35,7 +35,7 @@ class PerformanceMonitor:
             ram_stats = psutil.virtual_memory()
             ram_percent = ram_stats.percent
             ram_used_gb = ram_stats.used / (1024**3)
-            
+
             gpu_percent, gpu_mem_percent, gpu_mem_used_gb = None, None, None
             if self._gpu_monitoring_available:
                 gpu_util = pynvml.nvmlDeviceGetUtilizationRates(self.gpu_handle)
@@ -81,15 +81,15 @@ class PerformanceMonitor:
 
         if not os.path.exists(report_path):
             os.makedirs(report_path)
-            
+
         filename = os.path.join(report_path, f"performance_report_{task_name}_{int(time.time())}.html")
-        
+
         total_duration = df['elapsed_time_s'].iloc[-1]
         avg_cpu = f"{df['cpu_percent'].mean():.2f}%"
         max_cpu = f"{df['cpu_percent'].max():.2f}%"
         avg_ram = f"{df['ram_used_gb'].mean():.2f} GB ({df['ram_percent'].mean():.2f}%)"
         max_ram = f"{df['ram_used_gb'].max():.2f} GB ({df['ram_percent'].max():.2f}%)"
-        
+
         avg_gpu, max_gpu, avg_gpu_mem, max_gpu_mem = "N/A", "N/A", "N/A", "N/A"
         if self._gpu_monitoring_available and not df['gpu_percent'].isnull().all():
             avg_gpu = f"{df['gpu_percent'].mean():.2f}%"
@@ -103,7 +103,7 @@ class PerformanceMonitor:
         fig.add_trace(go.Scatter(x=df['elapsed_time_s'], y=df['ram_percent'], mode='lines', name='RAM Usage (%)'))
         if self._gpu_monitoring_available:
             fig.add_trace(go.Scatter(x=df['elapsed_time_s'], y=df['gpu_percent'], mode='lines', name='GPU Usage (%)'))
-        
+
         fig.update_layout(title=f'Performance Metrics for: {task_name}', xaxis_title='Time (seconds)', yaxis_title='Usage (%)', template='plotly_white')
         chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
 
@@ -120,14 +120,14 @@ class PerformanceMonitor:
             <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-xl p-8">
                 <h1 class="text-4xl font-bold text-gray-800 mb-2">Performance Report</h1>
                 <p class="text-lg text-gray-600 mb-6">Analysis for task: <span class="font-semibold text-indigo-600">{task_name}</span></p>
-                
+
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     <div class="bg-gray-50 p-6 rounded-lg shadow-sm"><p class="text-sm text-gray-500">Total Duration</p><p class="text-3xl font-bold text-gray-800">{total_duration:.2f}s</p></div>
                     <div class="bg-gray-50 p-6 rounded-lg shadow-sm"><p class="text-sm text-gray-500">Avg / Max CPU</p><p class="text-3xl font-bold text-gray-800">{avg_cpu} / {max_cpu}</p></div>
                     <div class="bg-gray-50 p-6 rounded-lg shadow-sm"><p class="text-sm text-gray-500">Avg / Max RAM</p><p class="text-3xl font-bold text-gray-800">{avg_ram} / {max_ram}</p></div>
                     <div class="bg-gray-50 p-6 rounded-lg shadow-sm"><p class="text-sm text-gray-500">Avg / Max GPU</p><p class="text-3xl font-bold text-gray-800">{avg_gpu} / {max_gpu}</p></div>
                 </div>
-                
+
                 <div class="w-full">
                     {chart_html}
                 </div>
@@ -135,9 +135,9 @@ class PerformanceMonitor:
         </body>
         </html>
         """
-        
+
         with open(filename, 'w') as f:
             f.write(html_content)
-        
+
         print(f"[PerformanceMonitor] Fancy HTML report saved to: {filename}")
         display(HTML(f'<a href="{filename}" target="_blank">Click here to view the full report</a>'))

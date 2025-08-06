@@ -38,7 +38,7 @@ class DatasetDownloader:
             shutil.move(source_item, dest_item)
 
         print("[_flatten_directory] File move complete.")
-        
+
         cleanup_dir = os.path.join(self.download_dir, 'physionet.org')
         if os.path.exists(cleanup_dir):
             shutil.rmtree(cleanup_dir)
@@ -113,7 +113,7 @@ class DatasetDownloader:
             git_repo (str): Your GitHub repository name.
         """
         print(f"\n[push_script_to_github] Attempting to push '{file_path}' to GitHub...")
-        
+
         try:
             subprocess.run(['git', 'add', file_path, '.gitignore'], check=True)
 
@@ -129,7 +129,7 @@ class DatasetDownloader:
 
             remote_url = f"https://{git_token}@github.com/{git_username}/{git_repo}.git"
             subprocess.run(['git', 'push', remote_url], check=True)
-            
+
             print(f"[push_script_to_github] Successfully pushed '{file_path}' to GitHub.")
 
         except KeyboardInterrupt:
