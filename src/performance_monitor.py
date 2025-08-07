@@ -7,6 +7,12 @@ import pandas as pd
 import os
 from IPython.display import HTML, display
 
+try:
+    from google.colab import files
+    IS_COLAB = True
+except ImportError:
+    IS_COLAB = False
+
 class PerformanceMonitor:
     """
     Monitors CPU, RAM, and GPU performance and generates a visual HTML report.
@@ -18,6 +24,7 @@ class PerformanceMonitor:
         self._records = []
         self.start_time = None
         self._gpu_monitoring_available = False
+        self.gpu_handle = None
 
         try:
             pynvml.nvmlInit()
@@ -38,11 +45,15 @@ class PerformanceMonitor:
 
             gpu_percent, gpu_mem_percent, gpu_mem_used_gb = None, None, None
             if self._gpu_monitoring_available:
-                gpu_util = pynvml.nvmlDeviceGetUtilizationRates(self.gpu_handle)
-                gpu_percent = gpu_util.gpu
-                gpu_mem_info = pynvml.nvmlDeviceGetMemoryInfo(self.gpu_handle)
-                gpu_mem_percent = (gpu_mem_info.used / gpu_mem_info.total) * 100
-                gpu_mem_used_gb = gpu_mem_info.used / (1024**3)
+                try:
+                    gpu_util = pynvml.nvmlDeviceGetUtilizationRates(self.gpu_handle)
+                    gpu_percent = gpu_util.gpu
+                    gpu_mem_info = pynvml.nvmlDeviceGetMemoryInfo(self.gpu_handle)
+                    gpu_mem_percent = (gpu_mem_info.used / gpu_mem_info.total) * 100
+                    gpu_mem_used_gb = gpu_mem_info.used / (1024**3)
+                except pynvml.NVMLError:
+                    self._gpu_monitoring_available = False
+                    print("[PerformanceMonitor] GPU monitoring failed mid-run. Disabling.")
 
             self._records.append({
                 'elapsed_time_s': timestamp,
@@ -53,6 +64,18 @@ class PerformanceMonitor:
 
     def start(self):
         print("[PerformanceMonitor] Starting...")
+        if self._is_running:
+            print("[PerformanceMonitor] Monitor is already running.")
+            return
+
+        print("[PerformanceMonitor] Starting monitoring session...")
+        try:
+            pynvml.nvmlInit()
+            self._gpu_monitoring_available = True
+        except pynvml.NVMLError:
+            self._gpu_monitoring_available = False
+
+
         self.start_time = time.time()
         self._is_running = True
         self._records = []
@@ -63,9 +86,12 @@ class PerformanceMonitor:
     def stop(self):
         if not self._is_running: return
         self._is_running = False
-        self._thread.join()
+        self._thread.join(timeout=self.interval * 2)
         if self._gpu_monitoring_available:
-            pynvml.nvmlShutdown()
+            try:
+                pynvml.nvmlShutdown()
+            except pynvml.NVMLError:
+                pass
         print("[PerformanceMonitor] Monitor stopped.")
         return self.get_report()
 
@@ -73,7 +99,6 @@ class PerformanceMonitor:
         return pd.DataFrame(self._records)
 
     def generate_html_report(self, task_name: str, report_path: str = './reports'):
-        """Generates and saves a fancy HTML report with summary cards and an interactive chart."""
         df = self.get_report()
         if df.empty:
             print("[PerformanceMonitor] No data to generate a report.")
@@ -84,14 +109,14 @@ class PerformanceMonitor:
 
         filename = os.path.join(report_path, f"performance_report_{task_name}_{int(time.time())}.html")
 
-        total_duration = df['elapsed_time_s'].iloc[-1]
+        total_duration = df['elapsed_time_s'].iloc[-1] if not df.empty else 0
         avg_cpu = f"{df['cpu_percent'].mean():.2f}%"
         max_cpu = f"{df['cpu_percent'].max():.2f}%"
         avg_ram = f"{df['ram_used_gb'].mean():.2f} GB ({df['ram_percent'].mean():.2f}%)"
         max_ram = f"{df['ram_used_gb'].max():.2f} GB ({df['ram_percent'].max():.2f}%)"
 
         avg_gpu, max_gpu, avg_gpu_mem, max_gpu_mem = "N/A", "N/A", "N/A", "N/A"
-        if self._gpu_monitoring_available and not df['gpu_percent'].isnull().all():
+        if 'gpu_percent' in df.columns and not df['gpu_percent'].isnull().all():
             avg_gpu = f"{df['gpu_percent'].mean():.2f}%"
             max_gpu = f"{df['gpu_percent'].max():.2f}%"
             avg_gpu_mem = f"{df['gpu_mem_used_gb'].mean():.2f} GB ({df['gpu_mem_percent'].mean():.2f}%)"
@@ -101,7 +126,7 @@ class PerformanceMonitor:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df['elapsed_time_s'], y=df['cpu_percent'], mode='lines', name='CPU Usage (%)'))
         fig.add_trace(go.Scatter(x=df['elapsed_time_s'], y=df['ram_percent'], mode='lines', name='RAM Usage (%)'))
-        if self._gpu_monitoring_available:
+        if 'gpu_percent' in df.columns and not df['gpu_percent'].isnull().all():
             fig.add_trace(go.Scatter(x=df['elapsed_time_s'], y=df['gpu_percent'], mode='lines', name='GPU Usage (%)'))
 
         fig.update_layout(title=f'Performance Metrics for: {task_name}', xaxis_title='Time (seconds)', yaxis_title='Usage (%)', template='plotly_white')
@@ -140,4 +165,9 @@ class PerformanceMonitor:
             f.write(html_content)
 
         print(f"[PerformanceMonitor] Fancy HTML report saved to: {filename}")
-        display(HTML(f'<a href="{filename}" target="_blank">Click here to view the full report</a>'))
+
+        if IS_COLAB:
+            print("[PerformanceMonitor] Triggering report download...")
+            files.download(filename)
+        else:
+            display(HTML(f'<a href="{filename}" target="_blank">Click here to view the full report</a>'))
